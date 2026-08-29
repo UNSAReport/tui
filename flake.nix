@@ -42,6 +42,11 @@
           packages = pkgs.lib.flatten [
             (with pkgs; [
               go
+              golangci-lint
+              just
+              sops
+              age
+              jq
             ])
             (with unstable; [
             ])

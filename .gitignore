@@ -1,2 +1,16 @@
+# nix
 .direnv
+# deps
 .go
+# env
+.env
+.env.*
+!.env.example
+# secrets (sops) — plaintext is gitignored, encrypted is committed
+secrets/*.yaml
+!secrets/*.enc.yaml
+!secrets/*.example.yaml
+secrets/*.env
+!secrets/*.enc.env
+# build
+dist/
