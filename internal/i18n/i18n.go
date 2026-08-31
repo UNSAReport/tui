@@ -17,7 +17,6 @@ var current = "en"
 var tables = map[string]map[string]string{}
 
 func Init() {
-	// Load embedded tables
 	for _, lang := range []string{"en", "es"} {
 		b, err := localesFS.ReadFile("locales/" + lang + ".json")
 		if err != nil {
@@ -28,7 +27,6 @@ func Init() {
 			tables[lang] = m
 		}
 	}
-	// Detect locale: config locale overrides env
 	locale := config.GetLocale()
 	if locale == "" {
 		locale = detectEnvLocale()
@@ -57,7 +55,6 @@ func detectEnvLocale() string {
 	return "en"
 }
 
-// T returns translated string for key, fallback to key itself.
 func T(key string, args ...any) string {
 	if m, ok := tables[current]; ok {
 		if v, ok := m[key]; ok {
@@ -67,7 +64,6 @@ func T(key string, args ...any) string {
 			return v
 		}
 	}
-	// fallback to en
 	if m, ok := tables["en"]; ok {
 		if v, ok := m[key]; ok {
 			if len(args) > 0 {
@@ -82,10 +78,8 @@ func T(key string, args ...any) string {
 	return key
 }
 
-// Current returns active locale.
 func Current() string { return current }
 
-// SetLocale forces locale (for tests).
 func SetLocale(l string) {
 	if strings.HasPrefix(strings.ToLower(l), "es") {
 		current = "es"

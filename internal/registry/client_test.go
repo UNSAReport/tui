@@ -36,7 +36,6 @@ func TestListTemplates_Hono(t *testing.T) {
 }
 
 func TestGetTemplateVersion_Semver(t *testing.T) {
-	// mock server for GetTemplate and versions
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/v1/packages/lab":
@@ -55,8 +54,6 @@ func TestGetTemplateVersion_Semver(t *testing.T) {
 	}))
 	defer srv.Close()
 	c := &Client{BaseURL: srv.URL, HTTPClient: srv.Client()}
-	// Need to also populate DistTags via fallback? Our GetTemplate will not have dist-tags, so GetTemplateVersion will try to resolve with versions map only.
-	// For this test, we will manually test resolve logic: use GetTemplateVersion with range ^1.0.0 should resolve 1.1.0
 	info, err := c.GetTemplateVersion(context.Background(), "lab", "^1.0.0")
 	if err != nil {
 		t.Fatalf("err %v", err)

@@ -43,7 +43,6 @@ type prepareLoadedMsg struct{}
 func (m PrepareModel) Update(msg tea.Msg) (PrepareModel, tea.Cmd) {
 	switch msg.(type) {
 	case prepareLoadedMsg:
-		// Load defaults from project config
 		if m.project != nil && m.project.IsProject {
 			cfg := m.project.Config
 			m.fileTemplate = cfg.Prepare.Output.FileTemplate
@@ -70,7 +69,6 @@ func (m PrepareModel) Update(msg tea.Msg) (PrepareModel, tea.Cmd) {
 			if m.codeWord == "" {
 				m.codeWord = "Código Fuente"
 			}
-			// vars: try to read report.typ metadata? For now stub with example vars
 			m.vars = map[string]string{
 				"lab_number": "01",
 				"course": "Curso",
@@ -91,14 +89,12 @@ func (m PrepareModel) Update(msg tea.Msg) (PrepareModel, tea.Cmd) {
 		}
 		return m, nil
 	case tea.KeyMsg:
-		// handled via form
 	}
 	if m.showForm && m.form != nil {
 		form, cmd := m.form.Update(msg)
 		if f, ok := form.(*huh.Form); ok {
 			m.form = f
 			if m.form.State == huh.StateCompleted {
-				// Save config
 				if m.project != nil && m.project.IsProject {
 					cfg := m.project.Config
 					cfg.Prepare.Output.FileTemplate = m.fileTemplate
@@ -126,7 +122,6 @@ func (m PrepareModel) Update(msg tea.Msg) (PrepareModel, tea.Cmd) {
 }
 
 func (m *PrepareModel) buildForm() {
-	// preview not needed as form title will show live?
 	m.form = huh.NewForm(
 		huh.NewGroup(
 			huh.NewInput().Title("File template").Value(&m.fileTemplate).Placeholder("{output_type}_{lab_number}"),
@@ -149,7 +144,6 @@ func (m PrepareModel) View() string {
 		previewReport := naming.ApplyTemplate(m.fileTemplate, m.vars, m.reportWord)
 		previewCode := naming.ApplyTemplate(m.fileTemplate, m.vars, m.codeWord)
 		preview := fmt.Sprintf("Preview: %s.pdf | %s.zip", previewReport, previewCode)
-		// Show form plus preview
 		return lipgloss.JoinVertical(lipgloss.Left,
 			lipgloss.NewStyle().Padding(1).Render(m.form.View()),
 			lipgloss.NewStyle().Padding(0,1).Foreground(lipgloss.Color("#888")).Render(preview),

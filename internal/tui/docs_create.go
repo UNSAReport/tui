@@ -25,8 +25,7 @@ type DocsCreateModel struct {
 	err       string
 	spinner   spinner.Model
 	form      *huh.Form
-	// form values
-	templateArg string // e.g. lab@1.0.0
+	templateArg string
 	version     string
 	dest        string
 	local       string
@@ -97,10 +96,8 @@ func (m DocsCreateModel) Update(msg tea.Msg) (DocsCreateModel, tea.Cmd) {
 		if f, ok := form.(*huh.Form); ok {
 			m.form = f
 			if m.form.State == huh.StateCompleted {
-				// Execute install
 				templateArg := m.templateArg
 				if m.version != "" {
-					// if templateArg already contains @, replace version part
 					if idx := strings.LastIndex(templateArg, "@"); idx != -1 {
 						templateArg = templateArg[:idx] + "@" + m.version
 					} else {
@@ -141,23 +138,18 @@ func (m *DocsCreateModel) buildForm() {
 	if len(m.templates) == 0 {
 		return
 	}
-	// Build options for template select
 	opts := make([]huh.Option[string], len(m.templates))
 	for i, t := range m.templates {
 		opts[i] = huh.NewOption(t.Name+" - "+t.Description, t.Name)
 	}
-	// default dest already set
-	// if multi, need session options
 	var sessionField huh.Field
 	if m.project != nil && m.project.IsProject && m.project.Config.Mode == "multi" {
 		sOpts := make([]huh.Option[string], len(m.project.Config.Sessions))
 		for i, s := range m.project.Config.Sessions {
 			sOpts[i] = huh.NewOption(s, s)
 		}
-		// allow empty for root install? but we require session for lab files? Provide dropdown
 		sessionField = huh.NewSelect[string]().Title("Session").Options(sOpts...).Value(&m.session)
 	} else {
-		// hidden session: create dummy input disabled
 		sessionField = huh.NewInput().Title("Session (only for multi)").Value(&m.session).Placeholder("leave empty for single")
 	}
 	m.templateArg = m.templates[0].Name
@@ -168,8 +160,6 @@ func (m *DocsCreateModel) buildForm() {
 				if s == "" {
 					return nil
 				}
-				// try to parse as constraint
-				// we validate via install's semver later, but simple check: not containing spaces and not invalid
 				if strings.Contains(s, " ") {
 					return fmt.Errorf("invalid version")
 				}
@@ -181,7 +171,6 @@ func (m *DocsCreateModel) buildForm() {
 			sessionField,
 		),
 	)
-	// also set dest default from project
 	if m.project != nil && m.project.IsProject {
 		m.dest = m.project.Root
 	}

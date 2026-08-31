@@ -15,7 +15,6 @@ import (
 	"github.com/UNSAReport/tui/internal/config"
 )
 
-// TemplateInfo describes a template.
 type TemplateInfo struct {
 	Name        string            `json:"name"`
 	Description string            `json:"description"`
@@ -26,7 +25,6 @@ type TemplateInfo struct {
 	Tags        []string          `json:"tags,omitempty"`
 }
 
-// Client fetches registry data from Hono service with legacy fallback.
 type Client struct {
 	BaseURL    string
 	HTTPClient *http.Client
@@ -35,7 +33,6 @@ type Client struct {
 
 func NewClient() *Client {
 	base := config.GetRegistryURL()
-	// ensure no trailing slash
 	base = strings.TrimSuffix(base, "/")
 	cache := filepath.Join(xdgCacheDir(), "registry.json")
 	return &Client{
@@ -55,34 +52,66 @@ func xdgCacheDir() string {
 	}
 	return ".cache/unsareport"
 }
+func (c *Client) authToken() string {
+	if v := os.Getenv("UNSAREP_TOKEN"); v != "" {
+		return v
+	}
+	if v := os.Getenv("UNSAREP_PAT"); v != "" {
+		return v
+	}
+	if tok := config.GetToken(); tok != "" {
+		return tok
+	}
+	if v := os.Getenv("XDG_CONFIG_HOME"); v != "" {
+		if b, err := os.ReadFile(filepath.Join(v, "unsareport", "credentials.json")); err == nil {
+			var m map[string]any
+			if err := json.Unmarshal(b, &m); err == nil {
+				if pat, ok := m["pat"].(string); ok {
+					return pat
+				}
+			}
+		}
+	} else if home, _ := os.UserHomeDir(); home != "" {
+		if b, err := os.ReadFile(filepath.Join(home, ".config", "unsareport", "credentials.json")); err == nil {
+			var m map[string]any
+			if err := json.Unmarshal(b, &m); err == nil {
+				if pat, ok := m["pat"].(string); ok {
+					return pat
+				}
+			}
+		}
+	}
+	return ""
+}
 
-// ListTemplates returns all templates. Tries Hono /v1/packages then fallback to cached registry.json.
+func (c *Client) setAuth(req *http.Request) {
+	if tok := c.authToken(); tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
+}
+
 func (c *Client) ListTemplates(ctx context.Context) ([]TemplateInfo, error) {
-	// Try new API
 	if c.BaseURL != "" && !strings.Contains(c.BaseURL, "github") {
 		req, err := http.NewRequestWithContext(ctx, "GET", c.BaseURL+"/v1/packages?limit=100", nil)
 		if err == nil {
 			req.Header.Set("User-Agent", "unsarep-tui")
+			c.setAuth(req)
 			resp, err := c.HTTPClient.Do(req)
 			if err == nil {
 				defer resp.Body.Close()
 				if resp.StatusCode == 200 {
-					// Try generic decode: try both shapes
 					var raw map[string]any
 					if err := json.NewDecoder(resp.Body).Decode(&raw); err == nil {
-						// attempt to extract packages array via second decode
 						b, _ := json.Marshal(raw)
 						var p2 struct {
 							Packages []TemplateInfo `json:"packages"`
 							Total    int            `json:"total"`
 						}
 						if err2 := json.Unmarshal(b, &p2); err2 == nil && len(p2.Packages) > 0 {
-							// cache
 							_ = os.MkdirAll(filepath.Dir(c.CachePath), 0o700)
 							_ = os.WriteFile(c.CachePath, b, 0o600)
 							return p2.Packages, nil
 						}
-						// Fallback shape: packages contain name/description
 						if pkgs, ok := raw["packages"].([]any); ok {
 							var out []TemplateInfo
 							for _, pa := range pkgs {
@@ -109,7 +138,6 @@ func (c *Client) ListTemplates(ctx context.Context) ([]TemplateInfo, error) {
 			}
 		}
 	}
-	// Fallback to legacy registry.json (local cache or bundled)
 	return c.listFromLegacy()
 }
 
@@ -125,7 +153,6 @@ type legacyRegistryFile struct {
 
 func (c *Client) listFromLegacy() ([]TemplateInfo, error) {
 	paths := []string{c.CachePath, "templates/registry.json", "../templates/registry.json", "../../templates/registry.json", "../../../templates/registry.json"}
-	// Also walk up from cwd looking for templates/registry.json
 	if cwd, err := os.Getwd(); err == nil {
 		dir := cwd
 		for range 6 {
@@ -174,7 +201,6 @@ func (c *Client) listFromLegacy() ([]TemplateInfo, error) {
 	return nil, fmt.Errorf("registry unavailable: %v", lastErr)
 }
 
-// GetTemplate fetches single template metadata.
 func (c *Client) GetTemplate(ctx context.Context, name string) (TemplateInfo, error) {
 	name = strings.ToLower(name)
 	if c.BaseURL != "" && !strings.Contains(c.BaseURL, "github") {
@@ -182,13 +208,13 @@ func (c *Client) GetTemplate(ctx context.Context, name string) (TemplateInfo, er
 		req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
 		if err == nil {
 			req.Header.Set("User-Agent", "unsarep-tui")
+			c.setAuth(req)
 			resp, err := c.HTTPClient.Do(req)
 			if err == nil {
 				defer resp.Body.Close()
 				switch resp.StatusCode {
 				case 200:
 					var pkg TemplateInfo
-					// Decode directly into TemplateInfo plus extra
 					var raw map[string]any
 					if err := json.NewDecoder(resp.Body).Decode(&raw); err == nil {
 						b, _ := json.Marshal(raw)
@@ -203,7 +229,6 @@ func (c *Client) GetTemplate(ctx context.Context, name string) (TemplateInfo, er
 								pkg.Description = v
 							}
 						}
-						// versions array
 						if vs, ok := raw["versions"].([]any); ok {
 							m := make(map[string]any)
 							for _, v := range vs {
@@ -223,7 +248,6 @@ func (c *Client) GetTemplate(ctx context.Context, name string) (TemplateInfo, er
 			}
 		}
 	}
-	// fallback legacy
 	all, err := c.listFromLegacy()
 	if err != nil {
 		return TemplateInfo{}, err
@@ -236,18 +260,14 @@ func (c *Client) GetTemplate(ctx context.Context, name string) (TemplateInfo, er
 	return TemplateInfo{}, fmt.Errorf("template %q not found", name)
 }
 
-// GetTemplateVersion resolves rangeSpec against available versions.
 func (c *Client) GetTemplateVersion(ctx context.Context, name, rangeSpec string) (TemplateInfo, error) {
 	info, err := c.GetTemplate(ctx, name)
 	if err != nil {
 		return TemplateInfo{}, err
 	}
-	// Need to fetch versions list for semver resolution if Versions missing dist-tags
-	// Try to fetch /v1/packages/:name/versions for accurate list
 	var versionsMap map[string]*semver.Version
 	var distTags map[string]*semver.Version
 
-	// Build from info.Versions + DistTags
 	versionsMap = make(map[string]*semver.Version)
 	for ver := range info.Versions {
 		if v, err := semver.NewVersion(ver); err == nil {
@@ -260,12 +280,12 @@ func (c *Client) GetTemplateVersion(ctx context.Context, name, rangeSpec string)
 			distTags[tag] = v
 		}
 	}
-	// If versionsMap empty, try fetching versions endpoint
 	if len(versionsMap) == 0 && c.BaseURL != "" {
 		u := fmt.Sprintf("%s/v1/packages/%s/versions", c.BaseURL, url.PathEscape(strings.ToLower(name)))
 		req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
 		if err == nil {
 			req.Header.Set("User-Agent", "unsarep-tui")
+			c.setAuth(req)
 			resp, err := c.HTTPClient.Do(req)
 			if err == nil {
 				defer resp.Body.Close()
@@ -286,7 +306,6 @@ func (c *Client) GetTemplateVersion(ctx context.Context, name, rangeSpec string)
 			}
 		}
 	}
-	// If still empty, fallback to single version entry
 	if len(versionsMap) == 0 && info.Version != "" {
 		if v, err := semver.NewVersion(info.Version); err == nil {
 			versionsMap[info.Version] = v
@@ -304,7 +323,6 @@ func (c *Client) GetTemplateVersion(ctx context.Context, name, rangeSpec string)
 	return info, nil
 }
 
-// resolveVersionFromMap mirrors UNSAReport version.go logic.
 func resolveVersionFromMap(available map[string]*semver.Version, distTags map[string]*semver.Version, rangeSpec string) (*semver.Version, error) {
 	switch rangeSpec {
 	case "latest", "":
@@ -328,9 +346,6 @@ func resolveVersionFromMap(available map[string]*semver.Version, distTags map[st
 	if len(candidates) == 0 {
 		return nil, fmt.Errorf("no version matching %q", rangeSpec)
 	}
-	// sort by string compare (semver string) to match legacy cmp.Compare
-	// Use semver Compare
-	// Find max
 	max := candidates[0]
 	for _, c := range candidates[1:] {
 		if c.GreaterThan(max) {

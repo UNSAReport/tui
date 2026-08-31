@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 )
 
-// XDGConfig holds user-level config at ~/.config/unsareport/config.json
 type XDGConfig struct {
 	APIURL      string `json:"apiUrl,omitempty"`
 	RegistryURL string `json:"registryUrl,omitempty"`
@@ -15,7 +14,6 @@ type XDGConfig struct {
 	Locale      string `json:"locale,omitempty"`
 }
 
-// xdgDir returns XDG config dir for unsareport.
 func xdgDir() string {
 	if v := os.Getenv("XDG_CONFIG_HOME"); v != "" {
 		return filepath.Join(v, "unsareport")
@@ -30,7 +28,6 @@ func xdgDir() string {
 func xdgConfigPath() string { return filepath.Join(xdgDir(), "config.json") }
 func defaultTokenPath() string { return filepath.Join(xdgDir(), "token") }
 
-// LoadXDGConfig reads config.json if exists, else returns empty config.
 func LoadXDGConfig() (*XDGConfig, error) {
 	path := xdgConfigPath()
 	b, err := os.ReadFile(path)
@@ -47,7 +44,6 @@ func LoadXDGConfig() (*XDGConfig, error) {
 	return &cfg, nil
 }
 
-// SaveXDGConfig writes config.json with 0600 dir 0700.
 func SaveXDGConfig(cfg *XDGConfig) error {
 	dir := xdgDir()
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -64,7 +60,6 @@ func SaveXDGConfig(cfg *XDGConfig) error {
 	return nil
 }
 
-// GetRegistryURL returns registry URL with env override.
 func GetRegistryURL() string {
 	if v := os.Getenv("UNSAREP_REGISTRY_URL"); v != "" {
 		return v
@@ -76,15 +71,19 @@ func GetRegistryURL() string {
 	if cfg != nil && cfg.RegistryURL != "" {
 		return cfg.RegistryURL
 	}
-	// Default matches registry service expectation; fallback to localhost in dev
 	if v := os.Getenv("REGISTRY_URL"); v != "" {
 		return v
 	}
 	return "https://registry.unsareport.org"
 }
 
-// GetAuthURL returns auth/idp URL.
 func GetAuthURL() string {
+	if v := os.Getenv("UNSAREP_IDP_ISSUER"); v != "" {
+		return v
+	}
+	if v := os.Getenv("IDP_ISSUER"); v != "" {
+		return v
+	}
 	if v := os.Getenv("UNSAREP_API_URL"); v != "" {
 		return v
 	}
@@ -98,7 +97,6 @@ func GetAuthURL() string {
 	return "https://auth.unsareport.org"
 }
 
-// GetToken returns token from env or file.
 func GetToken() string {
 	if v := os.Getenv("UNSAREP_TOKEN"); v != "" {
 		return v
@@ -118,7 +116,6 @@ func GetToken() string {
 	return string(b)
 }
 
-// SaveToken writes token to default path with 0600.
 func SaveToken(token string) error {
 	cfg, _ := LoadXDGConfig()
 	path := defaultTokenPath()
@@ -138,7 +135,6 @@ func SaveToken(token string) error {
 	return nil
 }
 
-// ClearToken removes token file.
 func ClearToken() error {
 	cfg, _ := LoadXDGConfig()
 	path := defaultTokenPath()
@@ -154,14 +150,11 @@ func ClearToken() error {
 	return nil
 }
 
-// GetLocale returns locale from env or config.
 func GetLocale() string {
 	if v := os.Getenv("UNSAREP_LOCALE"); v != "" {
 		return v
 	}
 	if v := os.Getenv("LANG"); v != "" {
-		// normalize LANG like en_US.UTF-8 -> en
-		// just return as is; i18n will parse prefix
 		_ = v
 	}
 	cfg, _ := LoadXDGConfig()
@@ -171,7 +164,6 @@ func GetLocale() string {
 	return ""
 }
 
-// Env overrides for legacy flags - exposed helpers
 func GetDest() string      { return os.Getenv("UNSAREP_DEST") }
 func GetSession() string   { return os.Getenv("UNSAREP_SESSION") }
 func GetLocal() string     { return os.Getenv("UNSAREP_LOCAL") }

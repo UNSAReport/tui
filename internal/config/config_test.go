@@ -8,7 +8,6 @@ import (
 
 func TestReadConfigDefaults(t *testing.T) {
 	tmp := t.TempDir()
-	// empty dir -> no config, should apply defaults
 	cfg, ok, err := ReadConfig(tmp)
 	if err != nil {
 		t.Fatal(err)
@@ -28,17 +27,14 @@ func TestReadConfigDefaults(t *testing.T) {
 	if cfg.Capture.Prompt != "❯ " {
 		t.Fatalf("prompt %q", cfg.Capture.Prompt)
 	}
-	// invalid mode
 	os.WriteFile(filepath.Join(tmp, "unsareport.json"), []byte(`{"mode":"invalid"}`), 0o644)
 	if _, _, err := ReadConfig(tmp); err == nil {
 		t.Fatal("should error invalid mode")
 	}
-	// multi without sessions
 	os.WriteFile(filepath.Join(tmp, "unsareport.json"), []byte(`{"mode":"multi"}`), 0o644)
 	if _, _, err := ReadConfig(tmp); err == nil {
 		t.Fatal("should error multi without sessions")
 	}
-	// valid single
 	os.WriteFile(filepath.Join(tmp, "unsareport.json"), []byte(`{"template":"lab","mode":"single"}`), 0o644)
 	cfg, ok, err = ReadConfig(tmp)
 	if err != nil || !ok {

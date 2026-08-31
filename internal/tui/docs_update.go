@@ -44,7 +44,6 @@ func (m DocsUpdateModel) Update(msg tea.Msg) (DocsUpdateModel, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "y":
-			// apply
 			return m, nil
 		case "n":
 			return m, nil

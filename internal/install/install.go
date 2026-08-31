@@ -14,10 +14,10 @@ import (
 )
 
 type Options struct {
-	TemplateArg string // name[@range]
+	TemplateArg string
 	Dest        string
 	Session     string
-	Local       string // local dir alternative
+	Local       string
 }
 
 func parseTemplateArg(arg string) (name, rangeSpec string) {
@@ -27,15 +27,12 @@ func parseTemplateArg(arg string) (name, rangeSpec string) {
 	return arg, ""
 }
 
-// Execute installs template into dest.
 func Execute(ctx context.Context, opt Options) error {
 	name, rangeSpec := parseTemplateArg(opt.TemplateArg)
 	if strings.TrimSpace(name) == "" {
 		return fmt.Errorf("template name must not be empty")
 	}
 	if rangeSpec != "" {
-		// validate semver constraint early to give inline error
-		// use registry resolve logic via client; if invalid, it will error
 	}
 	dest := opt.Dest
 	if dest == "" {
@@ -48,18 +45,15 @@ func Execute(ctx context.Context, opt Options) error {
 	if err := os.MkdirAll(dest, 0o755); err != nil {
 		return fmt.Errorf("mkdir dest: %w", err)
 	}
-	// Resolve version via registry client
 	client := registry.NewClient()
 	info, err := client.GetTemplateVersion(ctx, name, rangeSpec)
 	if err != nil {
 		return err
 	}
-	// Fetch files
 	files, err := fetchFiles(ctx, client, info, opt.Local)
 	if err != nil {
 		return err
 	}
-	// Load manifest
 	manifestData, ok := files["manifest.json"]
 	if !ok {
 		return fmt.Errorf("manifest.json not found in template")
@@ -68,7 +62,6 @@ func Execute(ctx context.Context, opt Options) error {
 	if err != nil {
 		return err
 	}
-	// Determine entries to install
 	var entries []manifest.Entry
 	isMulti := man.Mode == "multi"
 	if isMulti {
@@ -77,19 +70,13 @@ func Execute(ctx context.Context, opt Options) error {
 			return err
 		}
 		entries = append(entries, me.Root...)
-		// For create, if session provided, substitute lab entry? For now handle both:
 		if opt.Session != "" {
-			// lab files with destination substitution: if dest contains {lab} placeholder? legacy substituteLab replaces Dest prefix?
-			// Simplified: prefix lab files with session dir
 			for _, e := range me.LabFiles {
 				ne := e
-				// If dest is like "l1/report.typ" or just file, we prefix session?
-				// Legacy: substituteLab replaces Dest template variable; we approximate by joining session
 				ne.Dest = filepath.ToSlash(filepath.Join(opt.Session, e.Dest))
 				entries = append(entries, ne)
 			}
 		} else {
-			// No session - skip lab files for multi without session (root only)
 			_ = me.LabFiles
 		}
 		entries = manifest.ExpandDirEntries(files, entries)
@@ -101,10 +88,8 @@ func Execute(ctx context.Context, opt Options) error {
 		entries = manifest.ExpandDirEntries(files, single)
 	}
 
-	// Write files
 	for _, e := range entries {
 		if e.Kind == manifest.KindDir {
-			// dir entries themselves not written, only expanded files
 			continue
 		}
 		data, ok := files[e.Src]
@@ -120,14 +105,12 @@ func Execute(ctx context.Context, opt Options) error {
 		}
 	}
 
-	// Write unsareport.json
 	cfg := config.UnsareportConfig{
 		Template:        name,
 		TemplateVersion: info.Version,
 		Mode:            man.Mode,
 	}
 	if isMulti {
-		// If session provided, sessions = [session]; else empty? For multi, need at least one session.
 		if opt.Session != "" {
 			cfg.Sessions = []string{opt.Session}
 		} else {
@@ -137,11 +120,9 @@ func Execute(ctx context.Context, opt Options) error {
 			cfg.LocalSource = opt.Local
 		}
 	}
-	// Apply defaults via WriteConfig? But WriteConfig stamps schema; we use config.WriteConfig which applies defaults? Actually ReadConfig applies defaults, Write just writes.
 	if err := config.WriteConfig(dest, cfg); err != nil {
 		return err
 	}
-	// Write lockfile (simplified placeholder)
 	lock := map[string]any{
 		"template":        name,
 		"version":         info.Version,

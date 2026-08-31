@@ -33,11 +33,9 @@ func TestXDGStore(t *testing.T) {
 	}
 	t.Setenv("UNSAREP_REGISTRY_URL", "")
 
-	// token
 	if err := SaveToken("secret123"); err != nil {
 		t.Fatal(err)
 	}
-	// check file perm 0600
 	info, _ := os.Stat(filepath.Join(tmp, "unsareport", "token"))
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("perm %o", info.Mode().Perm())

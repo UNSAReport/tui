@@ -13,7 +13,6 @@ import (
 	"github.com/UNSAReport/tui/internal/i18n"
 )
 
-// AppID enumerates top-level apps.
 type AppID int
 
 const (
@@ -38,13 +37,11 @@ func (a AppID) String() string {
 	}
 }
 
-// Category groups functions inside an app.
 type Category struct {
 	Name      string
 	Functions []string
 }
 
-// AppDef defines the static nav structure for an app.
 type AppDef struct {
 	ID         AppID
 	Name       string
@@ -63,7 +60,6 @@ func appDefs() []AppDef {
 	}
 }
 
-// ProjectContext mirrors minimal project detection state — delegates to internal/config.
 type ProjectContext = config.ProjectContext
 
 type RootOptions struct {
@@ -95,7 +91,6 @@ type RootModel struct {
 	auth          AuthModel
 }
 func NewRootModel(opts RootOptions) RootModel {
-	// Ensure i18n initialized (tests may not call main)
 	i18n.Init()
 	apps := appDefs()
 	m := RootModel{
@@ -121,7 +116,6 @@ func NewRootModel(opts RootOptions) RootModel {
 			m.project = &ProjectContext{IsProject: false}
 		}
 	}
-	// propagate project to child models
 	m.docsCreate.SetProject(m.project)
 	m.docsPrepare.SetProject(m.project)
 	return m
@@ -199,12 +193,10 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if !m.sidebarFocus {
-				// delegate back to active child first
 				if m.activeApp == AppRegistry {
 					var cmd tea.Cmd
 					m.registry, cmd = m.registry.Update(msg)
 					if m.registry.mode == registryBrowse {
-						// stay
 					}
 					return m, cmd
 				}
@@ -214,7 +206,6 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, cmd
 				}
 				if m.activeApp == AppDocs {
-					// delegate to docs child
 					cur := navItem{}
 					if len(m.nav) > 0 && m.cursor < len(m.nav) {
 						cur = m.nav[m.cursor]
@@ -267,7 +258,6 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if !m.sidebarFocus {
-			// delegate to active child
 			if m.activeApp == AppRegistry {
 				var cmd tea.Cmd
 				m.registry, cmd = m.registry.Update(msg)
@@ -350,7 +340,6 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	}
-	// Propagate spinner and other msgs
 	if m.activeApp == AppRegistry {
 		var cmd tea.Cmd
 		m.registry, cmd = m.registry.Update(msg)
@@ -362,7 +351,6 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 	if m.activeApp == AppDocs {
-		// propagate to all docs children (spinner etc)
 		var cmd tea.Cmd
 		m.docsCreate, cmd = m.docsCreate.Update(msg)
 		if cmd != nil {
@@ -385,7 +373,6 @@ func (m RootModel) View() string {
 		m.height = 24
 	}
 
-	// Top bar tabs
 	var tabs []string
 	for _, a := range m.apps {
 		name := fmt.Sprintf(" %d:%s ", int(a.ID)+1, a.Name)
@@ -395,7 +382,6 @@ func (m RootModel) View() string {
 			tabs = append(tabs, m.styles.TopBar.Render(name))
 		}
 	}
-	// Project badge
 	var badge string
 	if m.project != nil && m.project.IsProject {
 		label := m.project.Root
@@ -412,8 +398,7 @@ func (m RootModel) View() string {
 	topBar := lipgloss.JoinHorizontal(lipgloss.Top, strings.Join(tabs, ""), badge)
 	topBar = lipgloss.PlaceHorizontal(m.width, lipgloss.Left, topBar)
 
-	// Sidebar + main split
-	availH := m.height - lipgloss.Height(topBar) - 1 // reserve help bar
+	availH := m.height - lipgloss.Height(topBar) - 1
 	if availH < 5 {
 		availH = 5
 	}
@@ -424,18 +409,16 @@ func (m RootModel) View() string {
 	if sidebarW > 40 {
 		sidebarW = 40
 	}
-	mainW := m.width - sidebarW - 2 // borders
+	mainW := m.width - sidebarW - 2
 	if mainW < 30 {
 		mainW = 30
 	}
 
-	// Sidebar content
 	var sb strings.Builder
 	activeApp := m.apps[m.activeApp]
 	for _, cat := range activeApp.Categories {
 		sb.WriteString(m.styles.SidebarSel.Render(cat.Name) + "\n")
 		for _, fn := range cat.Functions {
-			// find index
 			idx := -1
 			for i, n := range m.nav {
 				if n.Category == cat.Name && n.Function == fn {
@@ -458,7 +441,6 @@ func (m RootModel) View() string {
 	sidebarContent := sb.String()
 	sidebarBox := m.styles.Sidebar.Width(sidebarW).Height(availH).Render(sidebarContent)
 
-	// Main panel — delegate to active app
 	var mainContent string
 	if m.activeApp == AppRegistry {
 		m.registry.SetSize(mainW, availH)
@@ -487,7 +469,6 @@ func (m RootModel) View() string {
 	mainBox := m.styles.Main.Width(mainW).Height(availH).Render(mainContent)
 	body := lipgloss.JoinHorizontal(lipgloss.Top, sidebarBox, mainBox)
 
-	// Help bar
 	helpBar := m.styles.HelpBar.Render(i18n.T("help.bar"))
 	if m.showHelp {
 		helpView := m.help.View(m.keys)
@@ -534,9 +515,7 @@ func (m RootModel) renderMain(cur navItem, w, h int) string {
 			b.WriteString("Coming soon — slides management\n")
 		}
 	}
-	// Fill height remainder
 	content := b.String()
-	// Simple truncation to h
 	lines := strings.Split(content, "\n")
 	if len(lines) > h-2 {
 		lines = lines[:h-2]

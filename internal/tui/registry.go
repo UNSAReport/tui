@@ -61,7 +61,7 @@ func NewRegistryModel() RegistryModel {
 	l := list.New(nil, delegate, 40, 15)
 	l.Title = i18n.T("category.templates") + " — " + i18n.T("function.browse")
 	l.SetShowHelp(false)
-	l.SetFilteringEnabled(false) // we handle via search mode
+	l.SetFilteringEnabled(false)
 	return RegistryModel{
 		client:    registry.NewClient(),
 		spinner:   s,
@@ -128,7 +128,6 @@ func (m RegistryModel) Update(msg tea.Msg) (RegistryModel, tea.Cmd) {
 				m.textInput.Blur()
 				return m, nil
 			case "enter":
-				// apply filter already done via Update
 				m.mode = registryBrowse
 				m.focusSearch = false
 				m.textInput.Blur()
@@ -166,7 +165,6 @@ func (m RegistryModel) Update(msg tea.Msg) (RegistryModel, tea.Cmd) {
 		}
 	}
 
-	// Delegate to appropriate component
 	if m.loading {
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
@@ -177,7 +175,6 @@ func (m RegistryModel) Update(msg tea.Msg) (RegistryModel, tea.Cmd) {
 		var cmd tea.Cmd
 		m.textInput, cmd = m.textInput.Update(msg)
 		cmds = append(cmds, cmd)
-		// filter
 		q := strings.ToLower(m.textInput.Value())
 		if q == "" {
 			m.filtered = m.templates
@@ -230,7 +227,6 @@ func (m RegistryModel) View() string {
 			}
 			if len(m.selected.Versions) > 0 {
 				b.WriteString("Versions: ")
-				// list keys
 				var vers []string
 				for k := range m.selected.Versions {
 					vers = append(vers, k)
@@ -247,12 +243,10 @@ func (m RegistryModel) View() string {
 			m.list.View(),
 		)
 	}
-	// browse
 	helpLine := lipgloss.NewStyle().Foreground(lipgloss.Color("#888")).Render("Press / to search, enter for details, r to retry")
 	return lipgloss.JoinVertical(lipgloss.Left, m.list.View(), helpLine)
 }
 
-// For root integration
 func (m RegistryModel) IsLoading() bool { return m.loading }
 func (m *RegistryModel) SetSize(w, h int) {
 	m.width = w

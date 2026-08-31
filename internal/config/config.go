@@ -8,7 +8,6 @@ import (
 	"strings"
 )
 
-// CaptureConfig defines terminal capture parameters.
 type CaptureConfig struct {
 	Columns        int               `json:"columns"`
 	Rows           int               `json:"rows,omitempty"`
@@ -18,13 +17,11 @@ type CaptureConfig struct {
 	CommandTimeout int               `json:"commandTimeout,omitempty"`
 }
 
-// PrepareInputConfig specifies the source directory and report file.
 type PrepareInputConfig struct {
 	SrcDir     string `json:"srcDir"`
 	ReportFile string `json:"reportFile"`
 }
 
-// PrepareOutputConfig specifies submission details.
 type PrepareOutputConfig struct {
 	SubmissionDir string `json:"submissionDir"`
 	FileTemplate  string `json:"fileTemplate"`
@@ -32,13 +29,11 @@ type PrepareOutputConfig struct {
 	CodeWord      string `json:"codeWord"`
 }
 
-// PrepareConfig groups input and output configuration.
 type PrepareConfig struct {
 	Input  PrepareInputConfig  `json:"input"`
 	Output PrepareOutputConfig `json:"output"`
 }
 
-// UnsareportConfig represents the full project configuration.
 type UnsareportConfig struct {
 	Schema          string                     `json:"$schema,omitempty"`
 	Template        string                     `json:"template"`
@@ -51,7 +46,6 @@ type UnsareportConfig struct {
 	Components      map[string]string          `json:"components,omitempty"`
 }
 
-// ProjectContext holds detection result.
 type ProjectContext struct {
 	Root               string
 	Config             UnsareportConfig
@@ -59,10 +53,8 @@ type ProjectContext struct {
 	PreselectedSession string
 }
 
-// Version for schema stamping.
 var Version = "1.0.0"
 
-// FindProjectRoot walks up from startDir looking for unsareport.json.
 func FindProjectRoot(startDir string) (string, UnsareportConfig, bool, error) {
 	currentDir := startDir
 	for {
@@ -79,7 +71,6 @@ func FindProjectRoot(startDir string) (string, UnsareportConfig, bool, error) {
 	return startDir, UnsareportConfig{}, false, nil
 }
 
-// ReadConfig reads and validates unsareport.json from destDir, applying defaults.
 func ReadConfig(destDir string) (UnsareportConfig, bool, error) {
 	path := filepath.Join(destDir, "unsareport.json")
 	var cfg UnsareportConfig
@@ -138,7 +129,6 @@ func ReadConfig(destDir string) (UnsareportConfig, bool, error) {
 	return cfg, found, nil
 }
 
-// WriteConfig marshals cfg to JSON and writes it to unsareport.json.
 func WriteConfig(destDir string, cfg UnsareportConfig) error {
 	parts := strings.SplitN(Version, ".", 3)
 	majorMinor := Version
@@ -158,7 +148,6 @@ func WriteConfig(destDir string, cfg UnsareportConfig) error {
 	return nil
 }
 
-// DetectProject walks up from startDir and also determines preselected session.
 func DetectProject(startDir string) (*ProjectContext, error) {
 	abs, err := filepath.Abs(startDir)
 	if err != nil {
@@ -171,7 +160,6 @@ func DetectProject(startDir string) (*ProjectContext, error) {
 	if !ok {
 		return &ProjectContext{IsProject: false, Root: abs}, nil
 	}
-	// Determine preselected session: if CWD is projectRoot/<session> child.
 	preselected := ""
 	if abs != root {
 		rel, err := filepath.Rel(root, abs)
@@ -185,7 +173,6 @@ func DetectProject(startDir string) (*ProjectContext, error) {
 						break
 					}
 				}
-				// For single mode, no session but still keep empty; spec says empty if not child.
 			}
 		}
 	}

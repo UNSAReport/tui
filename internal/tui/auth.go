@@ -53,7 +53,6 @@ func (m AuthModel) fetchStatus() tea.Cmd {
 		client := auth.NewClient()
 		u, err := client.Whoami(context.Background())
 		if err != nil {
-			// token present but whoami failed - still show token active
 			return authStatusMsg{loggedIn: true, user: "unknown (offline)", err: err.Error()}
 		}
 		return authStatusMsg{loggedIn: true, user: u.Name + " <" + u.Email + ">"}
@@ -87,8 +86,6 @@ func (m AuthModel) Update(msg tea.Msg) (AuthModel, tea.Cmd) {
 			m.loading = true
 			return m, tea.Batch(m.spinner.Tick, m.fetchStatus())
 		}
-		// handle login/logout selection via mode? root will set mode based on nav cursor
-		// For now, keys: enter on Login triggers form
 	}
 	if m.loading {
 		var cmd tea.Cmd
@@ -100,10 +97,9 @@ func (m AuthModel) Update(msg tea.Msg) (AuthModel, tea.Cmd) {
 		if f, ok := form.(*huh.Form); ok {
 			m.form = f
 			if m.form.State == huh.StateCompleted {
-				// handle login/logout confirm
 				switch m.mode {
 				case authLogin:
-					err := m.client.Login(m.tokenInput)
+					_, err := m.client.LoginWithToken(context.Background(), m.tokenInput)
 					if err != nil {
 						m.result = "Login failed: " + err.Error()
 					} else {
@@ -136,7 +132,7 @@ func (m *AuthModel) SetMode(mode authMode) {
 	case authLogin:
 		m.tokenInput = ""
 		m.form = huh.NewForm(huh.NewGroup(
-			huh.NewInput().Title("Paste token").Placeholder("JWT token").Value(&m.tokenInput).Validate(func(s string) error {
+			huh.NewInput().Title("Paste PAT").Placeholder("unsareport_pat_...").Value(&m.tokenInput).Validate(func(s string) error {
 				if len(s) < 5 {
 					return fmt.Errorf("token too short")
 				}
@@ -148,14 +144,10 @@ func (m *AuthModel) SetMode(mode authMode) {
 		m.form = huh.NewForm(huh.NewGroup(
 			huh.NewConfirm().Title("Confirm logout?").Value(&confirm),
 		))
-		// we need to handle confirm via form state; if aborted, logout not done; if completed and confirm false, cancel
-		// Simplified: on completed we always logout
 		_ = confirm
 	case authStatus:
-		// no form
 	}
 	if m.form != nil {
-		// Init will be called by parent via Update? Need to trigger Init cmd
 	}
 }
 
@@ -176,13 +168,14 @@ func (m AuthModel) View() string {
 	if m.user != "" {
 		b += "User: " + m.user + "\n"
 	}
-	token := config.GetToken()
+	token := m.client.GetToken()
 	if token != "" {
 		b += "Token: " + token[:min(10, len(token))] + "... (active)\n"
 	} else {
 		b += "Token: none\n"
 	}
 	b += "\nSelect Login/Logout via sidebar, enter to execute, r to refresh"
+	b += "\nOr run: unsarep login  (browser, loopback 127.0.0.1)  | unsarep login --token <PAT>"
 	switch m.mode {
 	case authLogin:
 		b += "\n\n[Login form ready - press enter]"

@@ -14,7 +14,6 @@ type Theme struct {
 }
 
 func defaultTheme() Theme {
-	// Detect background to allow manual tweak if needed; AdaptiveColor handles auto.
 	_ = lipgloss.HasDarkBackground()
 	_ = termenv.HasDarkBackground()
 	return Theme{

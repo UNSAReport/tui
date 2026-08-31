@@ -11,7 +11,6 @@ import (
 func TestRootNavigation(t *testing.T) {
 	m := NewRootModel(RootOptions{Project: &ProjectContext{IsProject: false}})
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
-	// Wait init
 	time.Sleep(50 * time.Millisecond)
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
