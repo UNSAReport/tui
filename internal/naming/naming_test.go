@@ -3,14 +3,17 @@ package naming
 import "testing"
 
 func TestApplyTemplate(t *testing.T) {
-	if got := ApplyTemplate("{output_type}_{lab_number}", map[string]string{"lab_number": "01"}, "Informe"); got != "Informe_01" {
-		t.Fatalf("got %q", got)
+	if got, err := ApplyTemplate("{output_type}_{lab_number}", map[string]string{"lab_number": "01"}, "Informe"); err != nil || got != "Informe_01" {
+		t.Fatalf("got %q err %v", got, err)
 	}
 	if got := SanitizeFilename("a/b:c"); got != "a-b-c" {
 		t.Fatalf("sanitize %q", got)
 	}
-	if got := ApplyTemplate("{output_type}_{lab_number}_{members}", map[string]string{"lab_number": "01", "members": "a/b"}, "Informe"); got != "Informe_01_a-b" {
-		t.Fatalf("got %q", got)
+	if got, err := ApplyTemplate("{output_type}_{lab_number}_{members}", map[string]string{"lab_number": "01", "members": "a/b"}, "Informe"); err != nil || got != "Informe_01_a-b" {
+		t.Fatalf("got %q err %v", got, err)
+	}
+	if _, err := ApplyTemplate("{unknown}", map[string]string{}, "Informe"); err == nil {
+		t.Fatalf("expected error for unknown variable")
 	}
 }
 

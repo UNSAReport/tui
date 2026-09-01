@@ -53,7 +53,7 @@ type ProjectContext struct {
 	PreselectedSession string
 }
 
-var Version = "1.0.0"
+
 
 func FindProjectRoot(startDir string) (string, UnsareportConfig, bool, error) {
 	currentDir := startDir
@@ -72,7 +72,7 @@ func FindProjectRoot(startDir string) (string, UnsareportConfig, bool, error) {
 }
 
 func ReadConfig(destDir string) (UnsareportConfig, bool, error) {
-	path := filepath.Join(destDir, "unsareport.json")
+	path := filepath.Join(destDir, ConfigFileName)
 	var cfg UnsareportConfig
 
 	found := true
@@ -88,37 +88,10 @@ func ReadConfig(destDir string) (UnsareportConfig, bool, error) {
 		if err := json.Unmarshal(b, &cfg); err != nil {
 			return UnsareportConfig{}, true, fmt.Errorf("failed to parse unsareport.json: %w", err)
 		}
+	} else {
+		return UnsareportConfig{}, false, nil
 	}
 
-	if cfg.Prepare.Input.SrcDir == "" {
-		cfg.Prepare.Input.SrcDir = "src"
-	}
-	if cfg.Prepare.Output.SubmissionDir == "" {
-		cfg.Prepare.Output.SubmissionDir = "submission"
-	}
-	if cfg.Prepare.Input.ReportFile == "" {
-		cfg.Prepare.Input.ReportFile = "report.typ"
-	}
-	if cfg.Capture.Prompt == "" {
-		cfg.Capture.Prompt = "❯ "
-	}
-	if cfg.Capture.Columns == 0 {
-		cfg.Capture.Columns = 120
-	}
-	if cfg.Capture.Colors == nil {
-		cfg.Capture.Colors = map[string]string{
-			"prompt":  "32",
-			"command": "36",
-			"args":    "33",
-			"reset":   "0",
-		}
-	}
-	if cfg.Capture.Columns <= 0 {
-		cfg.Capture.Columns = 120
-	}
-	if cfg.Capture.Rows <= 0 {
-		cfg.Capture.Rows = 500
-	}
 	validMode := cfg.Mode == "" || cfg.Mode == "single" || cfg.Mode == "multi"
 	if !validMode {
 		return UnsareportConfig{}, found, fmt.Errorf("invalid mode %q in unsareport.json (must be \"single\" or \"multi\")", cfg.Mode)
@@ -126,23 +99,55 @@ func ReadConfig(destDir string) (UnsareportConfig, bool, error) {
 	if cfg.Mode == "multi" && len(cfg.Sessions) == 0 {
 		return UnsareportConfig{}, found, fmt.Errorf("multi-mode requires at least one session in unsareport.json")
 	}
-	return cfg, found, nil
+	return cfg.WithDefaults(), found, nil
 }
 
+func (c UnsareportConfig) WithDefaults() UnsareportConfig {
+	if c.Prepare.Input.SrcDir == "" {
+		c.Prepare.Input.SrcDir = DefaultSrcDir
+	}
+	if c.Prepare.Output.SubmissionDir == "" {
+		c.Prepare.Output.SubmissionDir = DefaultSubmissionDir
+	}
+	if c.Prepare.Input.ReportFile == "" {
+		c.Prepare.Input.ReportFile = DefaultReportFile
+	}
+	if c.Capture.Prompt == "" {
+		c.Capture.Prompt = DefaultPrompt
+	}
+	if c.Capture.Columns == 0 {
+		c.Capture.Columns = DefaultColumns
+	}
+	if c.Capture.Colors == nil {
+		c.Capture.Colors = map[string]string{
+			"prompt":  ColorPrompt,
+			"command": ColorCommand,
+			"args":    ColorArgs,
+			"reset":   ColorReset,
+		}
+	}
+	if c.Capture.Columns <= 0 {
+		c.Capture.Columns = DefaultColumns
+	}
+	if c.Capture.Rows <= 0 {
+		c.Capture.Rows = DefaultRows
+	}
+	return c
+}
 func WriteConfig(destDir string, cfg UnsareportConfig) error {
 	parts := strings.SplitN(Version, ".", 3)
 	majorMinor := Version
 	if len(parts) >= 2 {
 		majorMinor = parts[0] + "." + parts[1]
 	}
-	cfg.Schema = fmt.Sprintf("https://raw.githubusercontent.com/UNSAReport/UNSAReport/v%s/schemas/unsareport.schema.json", majorMinor)
+	cfg.Schema = fmt.Sprintf(SchemaBaseURL+"/v%s/schemas/unsareport.schema.json", majorMinor)
 	b, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
 	}
 	b = append(b, '\n')
-	path := filepath.Join(destDir, "unsareport.json")
-	if err := os.WriteFile(path, b, 0o644); err != nil {
+	path := filepath.Join(destDir, ConfigFileName)
+	if err := os.WriteFile(path, b, PermFilePublic); err != nil {
 		return fmt.Errorf("write config file: %w", err)
 	}
 	return nil

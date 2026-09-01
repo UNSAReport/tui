@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/UNSAReport/tui/internal/config"
 	"github.com/charmbracelet/huh"
 )
-
 func RequireAuth(ctx context.Context, c *Client, prompt bool) (*Credentials, error) {
 	tok := ""
-	if v := os.Getenv("UNSAREP_TOKEN"); v != "" {
+	if v := os.Getenv(config.EnvToken); v != "" {
 		tok = v
 	} else if c != nil {
 		tok = c.GetToken()

@@ -17,7 +17,7 @@ func TestValidateAndStore(t *testing.T) {
 			w.WriteHeader(401)
 			return
 		}
-		if r.URL.Path == "/api/auth/me" || r.URL.Path == "/v1/auth/me" {
+		if r.URL.Path == "/api/auth/me" {
 			json.NewEncoder(w).Encode(map[string]any{
 				"user": map[string]any{"id": "u1", "name": "Alice", "email": "alice@example.com"},
 				"roles": map[string]string{"admin": "true"},
@@ -34,7 +34,7 @@ func TestValidateAndStore(t *testing.T) {
 	if fs.Path != filepath.Join(tmp, "unsareport", "credentials.json") {
 		fs.Path = filepath.Join(tmp, "unsareport", "credentials.json")
 	}
-	client := NewClientWithConfig(ClientConfig{IDPIssuer: srv.URL, HTTPClient: srv.Client(), Store: &FallbackStore{Keyring: &KeyringStore{}, File: fs}})
+	client := NewClientWithConfig(ClientConfig{IDPIssuer: srv.URL, HTTPClient: srv.Client(), Store: fs})
 	cred, err := client.ValidateAndStore(context.Background(), "unsareport_pat_good")
 	if err != nil {
 		t.Fatal(err)
@@ -73,13 +73,13 @@ func TestValidateAndStoreInvalid(t *testing.T) {
 	}
 }
 
-func TestLoginWithTokenFallback(t *testing.T) {
+func TestLoginWithToken(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/auth/me" {
-			w.WriteHeader(404)
+			json.NewEncoder(w).Encode(UserInfo{ID: "u2", Name: "Bob", Email: "bob@example.com"})
 			return
 		}
-		json.NewEncoder(w).Encode(UserInfo{ID: "u2", Name: "Bob", Email: "bob@example.com"})
+		w.WriteHeader(404)
 	}))
 	defer srv.Close()
 	tmp := t.TempDir()
@@ -87,7 +87,7 @@ func TestLoginWithTokenFallback(t *testing.T) {
 	t.Setenv("UNSAREP_TOKEN", "")
 	fs := &FileStore{Path: filepath.Join(tmp, "unsareport", "credentials.json")}
 	client := NewClientWithConfig(ClientConfig{IDPIssuer: srv.URL, HTTPClient: &http.Client{Timeout: 2 * time.Second}, Store: fs})
-	cred, err := client.LoginWithToken(context.Background(), "unsareport_pat_fallback")
+	cred, err := client.LoginWithToken(context.Background(), "unsareport_pat_good2")
 	if err != nil {
 		t.Fatal(err)
 	}

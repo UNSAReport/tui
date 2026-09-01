@@ -106,7 +106,11 @@ func (m PrepareModel) Update(msg tea.Msg) (PrepareModel, tea.Cmd) {
 					_ = config.WriteConfig(m.project.Root, cfg)
 					m.result = "Configuration saved"
 				} else {
-					m.result = "Preview: " + naming.ApplyTemplate(m.fileTemplate, m.vars, m.reportWord) + ".pdf"
+					if preview, err := naming.ApplyTemplate(m.fileTemplate, m.vars, m.reportWord); err != nil {
+						m.result = fmt.Sprintf("template error: %v", err)
+					} else {
+						m.result = "Preview: " + preview + ".pdf"
+					}
 				}
 				m.showForm = false
 				return m, nil
@@ -136,13 +140,25 @@ func (m *PrepareModel) buildForm() {
 
 func (m PrepareModel) View() string {
 	if m.result != "" {
-		previewReport := naming.ApplyTemplate(m.fileTemplate, m.vars, m.reportWord)
-		previewCode := naming.ApplyTemplate(m.fileTemplate, m.vars, m.codeWord)
+		previewReport, _ := naming.ApplyTemplate(m.fileTemplate, m.vars, m.reportWord)
+		previewCode, _ := naming.ApplyTemplate(m.fileTemplate, m.vars, m.codeWord)
+		if previewReport == "" {
+			previewReport = "invalid template"
+		}
+		if previewCode == "" {
+			previewCode = "invalid template"
+		}
 		return lipgloss.NewStyle().Padding(1).Render(fmt.Sprintf("Result: %s\n\nPreview: %s.pdf | %s.zip\n\nPress esc to back", m.result, previewReport, previewCode))
 	}
 	if m.showForm && m.form != nil {
-		previewReport := naming.ApplyTemplate(m.fileTemplate, m.vars, m.reportWord)
-		previewCode := naming.ApplyTemplate(m.fileTemplate, m.vars, m.codeWord)
+		previewReport, _ := naming.ApplyTemplate(m.fileTemplate, m.vars, m.reportWord)
+		previewCode, _ := naming.ApplyTemplate(m.fileTemplate, m.vars, m.codeWord)
+		if previewReport == "" {
+			previewReport = "invalid"
+		}
+		if previewCode == "" {
+			previewCode = "invalid"
+		}
 		preview := fmt.Sprintf("Preview: %s.pdf | %s.zip", previewReport, previewCode)
 		return lipgloss.JoinVertical(lipgloss.Left,
 			lipgloss.NewStyle().Padding(1).Render(m.form.View()),

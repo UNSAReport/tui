@@ -15,27 +15,32 @@ func TestReadConfigDefaults(t *testing.T) {
 	if ok {
 		t.Fatal("should not be ok for missing file")
 	}
-	if cfg.Prepare.Input.SrcDir != "src" {
-		t.Fatalf("srcDir %q", cfg.Prepare.Input.SrcDir)
+	if cfg.Prepare.Input.SrcDir != "" {
+		t.Fatalf("srcDir should be empty without file, got %q", cfg.Prepare.Input.SrcDir)
 	}
-	if cfg.Prepare.Input.ReportFile != "report.typ" {
-		t.Fatalf("reportFile %q", cfg.Prepare.Input.ReportFile)
+	// WithDefaults should fill
+	cfgWith := cfg.WithDefaults()
+	if cfgWith.Prepare.Input.SrcDir != DefaultSrcDir {
+		t.Fatalf("srcDir %q", cfgWith.Prepare.Input.SrcDir)
 	}
-	if cfg.Capture.Columns != 120 {
-		t.Fatalf("columns %d", cfg.Capture.Columns)
+	if cfgWith.Prepare.Input.ReportFile != DefaultReportFile {
+		t.Fatalf("reportFile %q", cfgWith.Prepare.Input.ReportFile)
 	}
-	if cfg.Capture.Prompt != "❯ " {
-		t.Fatalf("prompt %q", cfg.Capture.Prompt)
+	if cfgWith.Capture.Columns != DefaultColumns {
+		t.Fatalf("columns %d", cfgWith.Capture.Columns)
 	}
-	os.WriteFile(filepath.Join(tmp, "unsareport.json"), []byte(`{"mode":"invalid"}`), 0o644)
+	if cfgWith.Capture.Prompt != DefaultPrompt {
+		t.Fatalf("prompt %q", cfgWith.Capture.Prompt)
+	}
+	os.WriteFile(filepath.Join(tmp, ConfigFileName), []byte(`{"mode":"invalid"}`), PermFilePublic)
 	if _, _, err := ReadConfig(tmp); err == nil {
 		t.Fatal("should error invalid mode")
 	}
-	os.WriteFile(filepath.Join(tmp, "unsareport.json"), []byte(`{"mode":"multi"}`), 0o644)
+	os.WriteFile(filepath.Join(tmp, ConfigFileName), []byte(`{"mode":"multi"}`), PermFilePublic)
 	if _, _, err := ReadConfig(tmp); err == nil {
 		t.Fatal("should error multi without sessions")
 	}
-	os.WriteFile(filepath.Join(tmp, "unsareport.json"), []byte(`{"template":"lab","mode":"single"}`), 0o644)
+	os.WriteFile(filepath.Join(tmp, ConfigFileName), []byte(`{"template":"lab","mode":"single"}`), PermFilePublic)
 	cfg, ok, err = ReadConfig(tmp)
 	if err != nil || !ok {
 		t.Fatalf("valid single err %v ok %v", err, ok)

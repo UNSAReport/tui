@@ -35,7 +35,7 @@ type Client struct {
 func NewClient() *Client {
 	return NewClientWithConfig(ClientConfig{
 		IDPIssuer:  config.GetAuthURL(),
-		HTTPClient: &http.Client{Timeout: 10 * time.Second},
+		HTTPClient: &http.Client{Timeout: config.AuthTimeout},
 		Store:      NewStore(),
 	})
 }
@@ -48,7 +48,7 @@ func NewClientWithConfig(cfg ClientConfig) *Client {
 	iss = strings.TrimSuffix(iss, "/")
 	httpc := cfg.HTTPClient
 	if httpc == nil {
-		httpc = &http.Client{Timeout: 10 * time.Second}
+		httpc = &http.Client{Timeout: config.AuthTimeout}
 	}
 	store := cfg.Store
 	if store == nil {
@@ -58,26 +58,14 @@ func NewClientWithConfig(cfg ClientConfig) *Client {
 }
 
 func websiteBase() string {
-	if v := os.Getenv("UNSAREP_WEBSITE_URL"); v != "" {
-		return strings.TrimSuffix(v, "/")
-	}
-	if v := os.Getenv("WEBSITE_URL"); v != "" {
-		return strings.TrimSuffix(v, "/")
-	}
-	if v := os.Getenv("CLIENT_REDIRECT_URL"); v != "" {
-		return strings.TrimSuffix(v, "/")
-	}
-	if v := os.Getenv("BASE_URL"); v != "" {
+	if v := os.Getenv(config.EnvWebsiteURL); v != "" {
 		return strings.TrimSuffix(v, "/")
 	}
 	return ""
 }
 
 func (c *Client) resolveToken() string {
-	if v := strings.TrimSpace(os.Getenv("UNSAREP_TOKEN")); v != "" {
-		return v
-	}
-	if v := strings.TrimSpace(os.Getenv("UNSAREP_PAT")); v != "" {
+	if v := strings.TrimSpace(os.Getenv(config.EnvToken)); v != "" {
 		return v
 	}
 	if c.Store != nil {
@@ -85,7 +73,7 @@ func (c *Client) resolveToken() string {
 			return cred.PAT
 		}
 	}
-	return config.GetToken()
+	return strings.TrimSpace(config.GetToken())
 }
 
 func (c *Client) Whoami(ctx context.Context) (UserInfo, error) {
@@ -97,74 +85,61 @@ func (c *Client) whoamiWithToken(ctx context.Context, token string) (UserInfo, m
 	if strings.TrimSpace(token) == "" {
 		return UserInfo{}, nil, fmt.Errorf("not logged in")
 	}
-	paths := []string{"/api/auth/me", "/v1/auth/me"}
-	var lastErr error
-	for _, p := range paths {
-		req, err := http.NewRequestWithContext(ctx, "GET", c.BaseURL+p, nil)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		req.Header.Set("Authorization", "Bearer "+token)
-		req.Header.Set("User-Agent", "unsarep-tui")
-		resp, err := c.HTTPClient.Do(req)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		body, _ := readAll(resp)
-		if resp.StatusCode != 200 {
-			if resp.StatusCode == 404 && p == "/api/auth/me" {
-				lastErr = fmt.Errorf("whoami failed: %d body %s", resp.StatusCode, string(body))
-				continue
+	p := "/api/auth/me"
+	req, err := http.NewRequestWithContext(ctx, "GET", c.BaseURL+p, nil)
+	if err != nil {
+		return UserInfo{}, nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("User-Agent", "unsarep-tui")
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return UserInfo{}, nil, err
+	}
+	body, _ := readAll(resp)
+	if resp.StatusCode != 200 {
+		return UserInfo{}, nil, fmt.Errorf("whoami failed: %d body %s", resp.StatusCode, string(body))
+	}
+	var u UserInfo
+	if err := json.Unmarshal(body, &u); err == nil && u.ID != "" {
+		return u, u.Roles, nil
+	}
+	var env struct {
+		User  *UserInfo         `json:"user"`
+		Roles map[string]string `json:"roles"`
+		Data  *UserInfo         `json:"data"`
+	}
+	if err := json.Unmarshal(body, &env); err == nil {
+		if env.User != nil && env.User.ID != "" {
+			if env.Roles != nil {
+				env.User.Roles = env.Roles
 			}
-			return UserInfo{}, nil, fmt.Errorf("whoami failed: %d", resp.StatusCode)
+			return *env.User, env.Roles, nil
 		}
-		var u UserInfo
-		if err := json.Unmarshal(body, &u); err == nil && u.ID != "" {
-			return u, u.Roles, nil
+		if env.Data != nil && env.Data.ID != "" {
+			return *env.Data, env.Data.Roles, nil
 		}
-		var env struct {
-			User  *UserInfo         `json:"user"`
-			Roles map[string]string `json:"roles"`
-			Data  *UserInfo         `json:"data"`
-		}
-		if err := json.Unmarshal(body, &env); err == nil {
-			if env.User != nil && env.User.ID != "" {
-				if env.Roles != nil {
-					env.User.Roles = env.Roles
-				}
-				return *env.User, env.Roles, nil
-			}
-			if env.Data != nil && env.Data.ID != "" {
-				return *env.Data, env.Data.Roles, nil
-			}
-		}
-		var m map[string]any
-		if err := json.Unmarshal(body, &m); err == nil {
-			if um, ok := m["user"].(map[string]any); ok {
-				b2, _ := json.Marshal(um)
-				var u2 UserInfo
-				if err := json.Unmarshal(b2, &u2); err == nil && u2.ID != "" {
-					if r, ok := m["roles"].(map[string]any); ok {
-						roles := map[string]string{}
-						for k, v := range r {
-							if s, ok := v.(string); ok {
-								roles[k] = s
-							}
+	}
+	var m map[string]any
+	if err := json.Unmarshal(body, &m); err == nil {
+		if um, ok := m["user"].(map[string]any); ok {
+			b2, _ := json.Marshal(um)
+			var u2 UserInfo
+			if err := json.Unmarshal(b2, &u2); err == nil && u2.ID != "" {
+				if r, ok := m["roles"].(map[string]any); ok {
+					roles := map[string]string{}
+					for k, v := range r {
+						if s, ok := v.(string); ok {
+							roles[k] = s
 						}
-						u2.Roles = roles
 					}
-					return u2, u2.Roles, nil
+					u2.Roles = roles
 				}
+				return u2, u2.Roles, nil
 			}
 		}
-		lastErr = fmt.Errorf("unexpected whoami shape: %s", string(body))
 	}
-	if lastErr != nil {
-		return UserInfo{}, nil, lastErr
-	}
-	return UserInfo{}, nil, fmt.Errorf("whoami: no endpoint")
+	return UserInfo{}, nil, fmt.Errorf("unexpected whoami shape: %s", string(body))
 }
 
 func readAll(resp *http.Response) ([]byte, error) {
@@ -226,10 +201,7 @@ func (c *Client) Status(ctx context.Context) (*Credentials, *UserInfo, error) {
 	}
 	u, roles, err := c.whoamiWithToken(ctx, tok)
 	if err != nil {
-		if v := strings.TrimSpace(os.Getenv("UNSAREP_TOKEN")); v != "" && stored != nil && v == tok && stored.PAT != v {
-			return nil, nil, err
-		}
-		if v := strings.TrimSpace(os.Getenv("UNSAREP_PAT")); v != "" && stored != nil && v == tok && stored.PAT != v {
+		if v := strings.TrimSpace(os.Getenv(config.EnvToken)); v != "" && stored != nil && v == tok && stored.PAT != v {
 			return nil, nil, err
 		}
 		if stored != nil {
@@ -262,21 +234,16 @@ func (c *Client) Login(ctx context.Context, noBrowser bool) (*Credentials, error
 	defer cb.Close()
 
 	website := websiteBase()
-	var authURL string
-	if website != "" {
-		authURL = fmt.Sprintf("%s/auth/login?tui_callback=%s&state=%s", website, url.QueryEscape(cbURL), url.QueryEscape(state))
-	} else {
-		authURL = fmt.Sprintf("%s/v1/auth/google?tui_callback=%s&state=%s", c.BaseURL, url.QueryEscape(cbURL), url.QueryEscape(state))
+	if website == "" {
+		return nil, fmt.Errorf("website URL not configured: set %s", config.EnvWebsiteURL)
 	}
+	authURL := fmt.Sprintf("%s/auth/login?tui_callback=%s&state=%s", website, url.QueryEscape(cbURL), url.QueryEscape(state))
 
 	if noBrowser || IsHeadless() {
 		fmt.Printf("Open this URL in your browser:\n  %s\n\nWaiting for callback at %s (timeout 5m)...\n", authURL, cbURL)
-		res, err := cb.Wait(5 * time.Minute)
+		res, err := cb.Wait(config.CallbackTimeout)
 		if err == nil && res.PAT != "" {
 			return c.ValidateAndStore(ctx, res.PAT)
-		}
-		if err == nil && res.Token != "" {
-			return c.ValidateAndStore(ctx, res.Token)
 		}
 		return nil, fmt.Errorf("no callback received; paste PAT via 'unsarep login --token <PAT>'")
 	}
@@ -286,21 +253,14 @@ func (c *Client) Login(ctx context.Context, noBrowser bool) (*Credentials, error
 	}
 	fmt.Printf("Opened browser to %s\nWaiting for login (timeout 5m)...\n", authURL)
 
-	res, err := cb.Wait(5 * time.Minute)
+	res, err := cb.Wait(config.CallbackTimeout)
 	if err != nil {
 		return nil, err
 	}
-	pat := res.PAT
-	if pat == "" {
-		pat = res.Token
+	if res.PAT == "" {
+		return nil, fmt.Errorf("callback did not contain pat")
 	}
-	if pat == "" && res.Code != "" {
-		pat = res.Code
-	}
-	if pat == "" {
-		return nil, fmt.Errorf("callback did not contain pat/token/code")
-	}
-	return c.ValidateAndStore(ctx, pat)
+	return c.ValidateAndStore(ctx, res.PAT)
 }
 
 func (c *Client) LoginWithToken(ctx context.Context, token string) (*Credentials, error) {
@@ -324,18 +284,15 @@ func (c *Client) Logout() error {
 }
 
 func (c *Client) revokePat(tok string) error {
-	endpoints := []string{"/v1/auth/logout", "/api/auth/logout"}
-	for _, p := range endpoints {
-		req, err := http.NewRequest("POST", c.BaseURL+p, nil)
-		if err != nil {
-			continue
-		}
-		req.Header.Set("Authorization", "Bearer "+tok)
-		req.Header.Set("User-Agent", "unsarep-tui")
-		resp, err := c.HTTPClient.Do(req)
-		if err == nil {
-			resp.Body.Close()
-		}
+	req, err := http.NewRequest("POST", c.BaseURL+"/api/auth/logout", nil)
+	if err != nil {
+		return nil
+	}
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("User-Agent", "unsarep-tui")
+	resp, err := c.HTTPClient.Do(req)
+	if err == nil {
+		resp.Body.Close()
 	}
 	return nil
 }

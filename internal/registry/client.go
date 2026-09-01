@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/UNSAReport/tui/internal/config"
@@ -21,7 +20,7 @@ type TemplateInfo struct {
 	Version     string            `json:"version"`
 	Path        string            `json:"path"`
 	DistTags    map[string]string `json:"distTags,omitempty"`
-	Versions    map[string]any    `json:"versions,omitempty"` // raw for fallback
+	Versions    map[string]string `json:"versions,omitempty"`
 	Tags        []string          `json:"tags,omitempty"`
 }
 
@@ -34,52 +33,32 @@ type Client struct {
 func NewClient() *Client {
 	base := config.GetRegistryURL()
 	base = strings.TrimSuffix(base, "/")
-	cache := filepath.Join(xdgCacheDir(), "registry.json")
+	cache := filepath.Join(xdgCacheDir(), config.CacheFileName)
 	return &Client{
 		BaseURL:    base,
-		HTTPClient: &http.Client{Timeout: 30 * time.Second},
+		HTTPClient: &http.Client{Timeout: config.RegistryTimeout},
 		CachePath:  cache,
 	}
 }
 
 func xdgCacheDir() string {
-	if v := os.Getenv("XDG_CACHE_HOME"); v != "" {
-		return filepath.Join(v, "unsareport")
+	if v := os.Getenv(config.EnvXDGCacheHome); v != "" {
+		return filepath.Join(v, config.AppDirName)
 	}
-	home, _ := os.UserHomeDir()
-	if home != "" {
-		return filepath.Join(home, ".cache", "unsareport")
+	if d, err := os.UserCacheDir(); err == nil && d != "" {
+		return filepath.Join(d, config.AppDirName)
 	}
-	return ".cache/unsareport"
+	if home, _ := os.UserHomeDir(); home != "" {
+		return filepath.Join(home, ".cache", config.AppDirName)
+	}
+	return ""
 }
 func (c *Client) authToken() string {
-	if v := os.Getenv("UNSAREP_TOKEN"); v != "" {
+	if v := strings.TrimSpace(os.Getenv(config.EnvToken)); v != "" {
 		return v
 	}
-	if v := os.Getenv("UNSAREP_PAT"); v != "" {
-		return v
-	}
-	if tok := config.GetToken(); tok != "" {
+	if tok := strings.TrimSpace(config.GetToken()); tok != "" {
 		return tok
-	}
-	if v := os.Getenv("XDG_CONFIG_HOME"); v != "" {
-		if b, err := os.ReadFile(filepath.Join(v, "unsareport", "credentials.json")); err == nil {
-			var m map[string]any
-			if err := json.Unmarshal(b, &m); err == nil {
-				if pat, ok := m["pat"].(string); ok {
-					return pat
-				}
-			}
-		}
-	} else if home, _ := os.UserHomeDir(); home != "" {
-		if b, err := os.ReadFile(filepath.Join(home, ".config", "unsareport", "credentials.json")); err == nil {
-			var m map[string]any
-			if err := json.Unmarshal(b, &m); err == nil {
-				if pat, ok := m["pat"].(string); ok {
-					return pat
-				}
-			}
-		}
 	}
 	return ""
 }
@@ -91,173 +70,116 @@ func (c *Client) setAuth(req *http.Request) {
 }
 
 func (c *Client) ListTemplates(ctx context.Context) ([]TemplateInfo, error) {
-	if c.BaseURL != "" && !strings.Contains(c.BaseURL, "github") {
-		req, err := http.NewRequestWithContext(ctx, "GET", c.BaseURL+"/v1/packages?limit=100", nil)
-		if err == nil {
-			req.Header.Set("User-Agent", "unsarep-tui")
-			c.setAuth(req)
-			resp, err := c.HTTPClient.Do(req)
-			if err == nil {
-				defer resp.Body.Close()
-				if resp.StatusCode == 200 {
-					var raw map[string]any
-					if err := json.NewDecoder(resp.Body).Decode(&raw); err == nil {
-						b, _ := json.Marshal(raw)
-						var p2 struct {
-							Packages []TemplateInfo `json:"packages"`
-							Total    int            `json:"total"`
-						}
-						if err2 := json.Unmarshal(b, &p2); err2 == nil && len(p2.Packages) > 0 {
-							_ = os.MkdirAll(filepath.Dir(c.CachePath), 0o700)
-							_ = os.WriteFile(c.CachePath, b, 0o600)
-							return p2.Packages, nil
-						}
-						if pkgs, ok := raw["packages"].([]any); ok {
-							var out []TemplateInfo
-							for _, pa := range pkgs {
-								if m, ok := pa.(map[string]any); ok {
-									ti := TemplateInfo{}
-									if v, ok := m["name"].(string); ok {
-										ti.Name = v
-									}
-									if v, ok := m["description"].(string); ok {
-										ti.Description = v
-									}
-									if v, ok := m["displayName"].(string); ok && ti.Description == "" {
-										ti.Description = v
-									}
-									out = append(out, ti)
-								}
-							}
-							if len(out) > 0 {
-								return out, nil
-							}
-						}
-					}
-				}
-			}
-		}
+	if c.BaseURL == "" || strings.Contains(c.BaseURL, "github") {
+		return nil, fmt.Errorf("registry unavailable: no registry URL configured")
 	}
-	return c.listFromLegacy()
-}
-
-type legacyRegistryFile struct {
-	Templates map[string]struct {
-		Description string            `json:"description"`
-		DistTags    map[string]string `json:"dist-tags"`
-		Versions    map[string]struct {
-			Path string `json:"path"`
-		} `json:"versions"`
-	} `json:"templates"`
-}
-
-func (c *Client) listFromLegacy() ([]TemplateInfo, error) {
-	paths := []string{c.CachePath, "templates/registry.json", "../templates/registry.json", "../../templates/registry.json", "../../../templates/registry.json"}
-	if cwd, err := os.Getwd(); err == nil {
-		dir := cwd
-		for range 6 {
-			paths = append(paths, filepath.Join(dir, "templates/registry.json"))
-			paths = append(paths, filepath.Join(dir, "templates", "templates", "registry.json"))
-			parent := filepath.Dir(dir)
-			if parent == dir {
-				break
-			}
-			dir = parent
-		}
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s%s?limit=%d", c.BaseURL, config.RegistryPackagesPath, config.DefaultRegistryLimit), nil)
+	if err != nil {
+		return nil, fmt.Errorf("registry unavailable: %w", err)
 	}
-	var lastErr error
-	for _, p := range paths {
-		b, err := os.ReadFile(p)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		var lf legacyRegistryFile
-		if err := json.Unmarshal(b, &lf); err != nil {
-			lastErr = err
-			continue
-		}
+	req.Header.Set("User-Agent", "unsarep-tui")
+	c.setAuth(req)
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("registry unavailable: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("registry unavailable: status %d", resp.StatusCode)
+	}
+	var raw map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, fmt.Errorf("registry unavailable: decode %w", err)
+	}
+	b, _ := json.Marshal(raw)
+	var p2 struct {
+		Packages []TemplateInfo `json:"packages"`
+		Total    int            `json:"total"`
+	}
+	if err2 := json.Unmarshal(b, &p2); err2 == nil && len(p2.Packages) > 0 {
+		_ = os.MkdirAll(filepath.Dir(c.CachePath), config.PermDirPrivate)
+		_ = os.WriteFile(c.CachePath, b, config.PermFilePrivate)
+		return p2.Packages, nil
+	}
+	if pkgs, ok := raw["packages"].([]any); ok {
 		var out []TemplateInfo
-		for name, entry := range lf.Templates {
-			latest := ""
-			if v, ok := entry.DistTags["latest"]; ok {
-				latest = v
+		for _, pa := range pkgs {
+			if m, ok := pa.(map[string]any); ok {
+				ti := TemplateInfo{}
+				if v, ok := m["name"].(string); ok {
+					ti.Name = v
+				}
+				if v, ok := m["description"].(string); ok {
+					ti.Description = v
+				}
+				if v, ok := m["displayName"].(string); ok && ti.Description == "" {
+					ti.Description = v
+				}
+				out = append(out, ti)
 			}
-			ti := TemplateInfo{
-				Name:        name,
-				Description: entry.Description,
-				Version:     latest,
-				DistTags:    entry.DistTags,
-			}
-			vers := make(map[string]any)
-			for ver, v := range entry.Versions {
-				vers[ver] = v.Path
-			}
-			ti.Versions = vers
-			out = append(out, ti)
 		}
-		return out, nil
+		if len(out) > 0 {
+			return out, nil
+		}
 	}
-	return nil, fmt.Errorf("registry unavailable: %v", lastErr)
+	return nil, fmt.Errorf("registry unavailable: empty packages")
 }
+
 
 func (c *Client) GetTemplate(ctx context.Context, name string) (TemplateInfo, error) {
 	name = strings.ToLower(name)
-	if c.BaseURL != "" && !strings.Contains(c.BaseURL, "github") {
-		u := fmt.Sprintf("%s/v1/packages/%s", c.BaseURL, url.PathEscape(name))
-		req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
-		if err == nil {
-			req.Header.Set("User-Agent", "unsarep-tui")
-			c.setAuth(req)
-			resp, err := c.HTTPClient.Do(req)
-			if err == nil {
-				defer resp.Body.Close()
-				switch resp.StatusCode {
-				case 200:
-					var pkg TemplateInfo
-					var raw map[string]any
-					if err := json.NewDecoder(resp.Body).Decode(&raw); err == nil {
-						b, _ := json.Marshal(raw)
-						_ = json.Unmarshal(b, &pkg)
-						if pkg.Name == "" {
-							if v, ok := raw["name"].(string); ok {
-								pkg.Name = v
-							}
-						}
-						if pkg.Description == "" {
-							if v, ok := raw["description"].(string); ok {
-								pkg.Description = v
-							}
-						}
-						if vs, ok := raw["versions"].([]any); ok {
-							m := make(map[string]any)
-							for _, v := range vs {
-								if s, ok := v.(string); ok {
-									m[s] = s
-								}
-							}
-							pkg.Versions = m
-						}
-						if pkg.Name != "" {
-							return pkg, nil
-						}
-					}
-				case 404:
-					return TemplateInfo{}, fmt.Errorf("template %q not found", name)
-				}
+	if c.BaseURL == "" || strings.Contains(c.BaseURL, "github") {
+		return TemplateInfo{}, fmt.Errorf("registry unavailable: no registry URL configured")
+	}
+	u := fmt.Sprintf("%s/v1/packages/%s", c.BaseURL, url.PathEscape(name))
+	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+	if err != nil {
+		return TemplateInfo{}, fmt.Errorf("registry unavailable: %w", err)
+	}
+	req.Header.Set("User-Agent", "unsarep-tui")
+	c.setAuth(req)
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return TemplateInfo{}, fmt.Errorf("registry unavailable: %w", err)
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case 200:
+		var pkg TemplateInfo
+		var raw map[string]any
+		if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+			return TemplateInfo{}, fmt.Errorf("registry unavailable: decode %w", err)
+		}
+		b, _ := json.Marshal(raw)
+		_ = json.Unmarshal(b, &pkg)
+		if pkg.Name == "" {
+			if v, ok := raw["name"].(string); ok {
+				pkg.Name = v
 			}
 		}
-	}
-	all, err := c.listFromLegacy()
-	if err != nil {
-		return TemplateInfo{}, err
-	}
-	for _, t := range all {
-		if strings.EqualFold(t.Name, name) {
-			return t, nil
+		if pkg.Description == "" {
+			if v, ok := raw["description"].(string); ok {
+				pkg.Description = v
+			}
 		}
+		if vs, ok := raw["versions"].([]any); ok {
+			m := make(map[string]string)
+			for _, v := range vs {
+				if s, ok := v.(string); ok {
+					m[s] = s
+				}
+			}
+			pkg.Versions = m
+		}
+		if pkg.Name != "" {
+			return pkg, nil
+		}
+		return TemplateInfo{}, fmt.Errorf("registry unavailable: empty template name")
+	case 404:
+		return TemplateInfo{}, fmt.Errorf("template %q not found", name)
+	default:
+		return TemplateInfo{}, fmt.Errorf("registry unavailable: status %d", resp.StatusCode)
 	}
-	return TemplateInfo{}, fmt.Errorf("template %q not found", name)
 }
 
 func (c *Client) GetTemplateVersion(ctx context.Context, name, rangeSpec string) (TemplateInfo, error) {

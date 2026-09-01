@@ -196,8 +196,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.activeApp == AppRegistry {
 					var cmd tea.Cmd
 					m.registry, cmd = m.registry.Update(msg)
-					if m.registry.mode == registryBrowse {
-					}
+					// browse mode: Back is handled by registry model
 					return m, cmd
 				}
 				if m.activeApp == AppAuth {
@@ -210,15 +209,22 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if len(m.nav) > 0 && m.cursor < len(m.nav) {
 						cur = m.nav[m.cursor]
 					}
-					if cur.Category == i18n.T("category.create") {
+					switch cur.Category {
+					case i18n.T("category.create"):
 						var cmd tea.Cmd
 						m.docsCreate, cmd = m.docsCreate.Update(msg)
 						return m, cmd
-					}
-					if cur.Category == i18n.T("category.prepare") {
+					case i18n.T("category.prepare"):
 						var cmd tea.Cmd
 						m.docsPrepare, cmd = m.docsPrepare.Update(msg)
 						return m, cmd
+					case i18n.T("category.update"):
+						var cmd tea.Cmd
+						m.docsUpdate, cmd = m.docsUpdate.Update(msg)
+						return m, cmd
+					default:
+						m.sidebarFocus = true
+						return m, nil
 					}
 				}
 			}
@@ -256,6 +262,8 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cursor = 0
 			m.rebuildNav()
 			return m, nil
+		default:
+			// unhandled key when sidebar focused — fall through
 		}
 		if !m.sidebarFocus {
 			if m.activeApp == AppRegistry {

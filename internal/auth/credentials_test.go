@@ -3,8 +3,11 @@ package auth
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
+
+	"github.com/UNSAReport/tui/internal/config"
 )
 
 func TestFileStorePermAndAtomic(t *testing.T) {
@@ -22,11 +25,11 @@ func TestFileStorePermAndAtomic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o600 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != config.PermFilePrivate {
 		t.Fatalf("perm %o want 0600", info.Mode().Perm())
 	}
 	dirInfo, _ := os.Stat(filepath.Dir(fs.Path))
-	if dirInfo.Mode().Perm() != 0o700 {
+	if runtime.GOOS != "windows" && dirInfo.Mode().Perm() != config.PermDirPrivate {
 		t.Fatalf("dir perm %o want 0700", dirInfo.Mode().Perm())
 	}
 	got, err := fs.Get()
@@ -51,39 +54,37 @@ func TestGetTokenResolvedEnv(t *testing.T) {
 	_ = (&KeyringStore{}).Clear()
 	fs := NewFileStore()
 	_ = fs.Set(&Credentials{PAT: "unsareport_pat_file", CreatedAt: time.Now()})
-	store := &FallbackStore{Keyring: &KeyringStore{}, File: fs}
-	got := GetTokenResolved(store)
+	got := GetTokenResolved(fs)
 	if got != "env_pat_123" {
 		t.Fatalf("got %q want env", got)
 	}
 	t.Setenv("UNSAREP_TOKEN", "")
 	_ = (&KeyringStore{}).Clear()
-	got = GetTokenResolved(store)
+	got = GetTokenResolved(fs)
 	if got != "unsareport_pat_file" {
 		t.Fatalf("got %q want file", got)
 	}
 	_ = fs.Clear()
 }
 
-func TestFallbackStore(t *testing.T) {
+func TestFileStoreClear(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmp)
 	t.Setenv("UNSAREP_TOKEN", "")
 	_ = (&KeyringStore{}).Clear()
 	fs := NewFileStore()
-	fb := &FallbackStore{Keyring: &KeyringStore{}, File: fs}
 	cred := &Credentials{PAT: "unsareport_pat_fb", CreatedAt: time.Now()}
-	if err := fb.Set(cred); err != nil {
+	if err := fs.Set(cred); err != nil {
 		t.Fatal(err)
 	}
-	got, err := fb.Get()
+	got, err := fs.Get()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got.PAT != cred.PAT {
 		t.Fatalf("got %q", got.PAT)
 	}
-	if err := fb.Clear(); err != nil {
+	if err := fs.Clear(); err != nil {
 		t.Fatal(err)
 	}
 }

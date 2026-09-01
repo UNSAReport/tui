@@ -10,11 +10,12 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/UNSAReport/tui/internal/auth"
+	"github.com/UNSAReport/tui/internal/config"
 	"github.com/UNSAReport/tui/internal/i18n"
 	"github.com/UNSAReport/tui/internal/tui"
 )
 
-var version = "dev"
+var version = config.Version
 
 func main() {
 	i18n.Init()
@@ -47,12 +48,12 @@ func main() {
 		case "version", "--version", "-v":
 			fmt.Printf("unsarep %s\n", version)
 			os.Exit(0)
-		}
-		if strings.HasPrefix(args[0], "-") {
-		} else if args[0] != "login" && args[0] != "logout" && args[0] != "whoami" && args[0] != "status" && args[0] != "auth" {
-			fmt.Fprintf(os.Stderr, "unknown command %q\n", args[0])
-			printHelp()
-			os.Exit(1)
+		default:
+			if !strings.HasPrefix(args[0], "-") {
+				fmt.Fprintf(os.Stderr, "unknown command %q\n", args[0])
+				printHelp()
+				os.Exit(2)
+			}
 		}
 	}
 
@@ -196,10 +197,10 @@ Flags:
   -v, --version   Show version
 
 Auth:
-  Credentials stored in OS keychain (fallback 0600 file at $XDG_CONFIG_HOME/unsareport/credentials.json).
+  Credentials stored in OS keychain (0600 file at $XDG_CONFIG_HOME/unsareport/credentials.json when keychain unavailable).
   Env override: UNSAREP_TOKEN (transient, not persisted), UNSAREP_IDP_ISSUER, UNSAREP_REGISTRY_URL.
   Browser flow: opens website /auth/login?tui_callback=http://127.0.0.1:<port>/callback&state=...
-  Headless fallback: prints URL and waits for callback; if no browser, paste PAT via --token.
+  Headless: prints URL and waits for callback; if no browser, paste PAT via --token.
 
 Navigation (TUI):
   1-4         Switch apps (Registry, Docs, Auth, Slides)

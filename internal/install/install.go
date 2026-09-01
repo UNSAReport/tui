@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/UNSAReport/tui/internal/config"
 	"github.com/UNSAReport/tui/internal/manifest"
 	"github.com/UNSAReport/tui/internal/registry"
@@ -33,6 +34,11 @@ func Execute(ctx context.Context, opt Options) error {
 		return fmt.Errorf("template name must not be empty")
 	}
 	if rangeSpec != "" {
+		if _, err := semver.NewConstraint(rangeSpec); err != nil {
+			if _, err2 := semver.NewVersion(rangeSpec); err2 != nil {
+				return fmt.Errorf("invalid version constraint %q: %w", rangeSpec, err)
+			}
+		}
 	}
 	dest := opt.Dest
 	if dest == "" {
@@ -42,7 +48,7 @@ func Execute(ctx context.Context, opt Options) error {
 			return err
 		}
 	}
-	if err := os.MkdirAll(dest, 0o755); err != nil {
+	if err := os.MkdirAll(dest, config.PermDirPublic); err != nil {
 		return fmt.Errorf("mkdir dest: %w", err)
 	}
 	client := registry.NewClient()
@@ -96,11 +102,15 @@ func Execute(ctx context.Context, opt Options) error {
 		if !ok {
 			return fmt.Errorf("file %q not found in template", e.Src)
 		}
+		clean := filepath.Clean(e.Dest)
+		if filepath.IsAbs(clean) || strings.Contains(clean, "..") || strings.Contains(e.Dest, "\\") {
+			return fmt.Errorf("invalid dest path %q", e.Dest)
+		}
 		destPath := filepath.Join(dest, filepath.FromSlash(e.Dest))
-		if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(destPath), config.PermDirPublic); err != nil {
 			return err
 		}
-		if err := os.WriteFile(destPath, data, 0o644); err != nil {
+		if err := os.WriteFile(destPath, data, config.PermFilePublic); err != nil {
 			return err
 		}
 	}
@@ -130,7 +140,7 @@ func Execute(ctx context.Context, opt Options) error {
 		"components":      man.GetComponents(),
 	}
 	b, _ := json.MarshalIndent(lock, "", "  ")
-	_ = os.WriteFile(filepath.Join(dest, ".unsareport.lock"), append(b, '\n'), 0o644)
+	_ = os.WriteFile(filepath.Join(dest, config.LockFileName), append(b, '\n'), config.PermFilePublic)
 
 	return nil
 }

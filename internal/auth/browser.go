@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+
+	"github.com/UNSAReport/tui/internal/config"
 )
 
 var ErrNoBrowser = errors.New("no browser available")
@@ -33,10 +35,13 @@ func OpenBrowser(url string) error {
 }
 
 func IsHeadless() bool {
-	if os.Getenv("SSH_CONNECTION") != "" {
+	if os.Getenv(config.EnvSSHConnection) != "" {
 		return true
 	}
-	if runtime.GOOS == "linux" && os.Getenv("DISPLAY") == "" && os.Getenv("WAYLAND_DISPLAY") == "" {
+	if runtime.GOOS == "linux" && os.Getenv(config.EnvDisplay) == "" && os.Getenv(config.EnvWaylandDisplay) == "" {
+		return true
+	}
+	if runtime.GOOS == "windows" && os.Getenv("TERM") == "" {
 		return true
 	}
 	return false

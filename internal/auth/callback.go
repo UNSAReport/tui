@@ -7,7 +7,10 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"time"
+
+	"github.com/UNSAReport/tui/internal/config"
 )
 
 type CallbackResult struct {
@@ -38,18 +41,18 @@ func NewCallbackServer(state string) *CallbackServer {
 }
 
 func (s *CallbackServer) Start() (string, error) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := net.Listen("tcp", config.DefaultCallbackHost)
 	if err != nil {
 		return "", err
 	}
 	s.Listener = ln
 	mux := http.NewServeMux()
-	mux.HandleFunc("/callback", s.handleCallback)
+	mux.HandleFunc(config.CallbackPath, s.handleCallback)
 	mux.HandleFunc("/", s.handleCallback)
-	s.server = &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	s.server = &http.Server{Handler: mux, ReadHeaderTimeout: config.CallbackReadHeaderTimeout}
 	go func() { _ = s.server.Serve(ln) }()
 	addr := ln.Addr().String()
-	u := "http://" + addr + "/callback"
+	u := config.CallbackBaseURLPrefix + addr + config.CallbackPath
 	return u, nil
 }
 
@@ -61,23 +64,20 @@ func (s *CallbackServer) handleCallback(w http.ResponseWriter, r *http.Request) 
 		select {
 		case s.Done <- CallbackResult{Err: fmt.Errorf("invalid state: got %q want %q", state, s.State)}:
 		default:
+			fmt.Fprintf(os.Stderr, "callback channel full\n")
 		}
 		return
 	}
 	res := CallbackResult{
 		PAT:   q.Get("pat"),
-		Token: q.Get("token"),
-		Code:  q.Get("code"),
 		State: state,
-	}
-	if res.PAT == "" {
-		res.PAT = res.Token
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte(`<!doctype html><html><body><script>window.close()</script><p>You can close this window. Return to the terminal.</p></body></html>`))
 	select {
 	case s.Done <- res:
 	default:
+		fmt.Fprintf(os.Stderr, "callback channel full\n")
 	}
 }
 
