@@ -85,8 +85,7 @@ func (c *Client) whoamiWithToken(ctx context.Context, token string) (UserInfo, m
 	if strings.TrimSpace(token) == "" {
 		return UserInfo{}, nil, fmt.Errorf("not logged in")
 	}
-	p := "/api/auth/me"
-	req, err := http.NewRequestWithContext(ctx, "GET", c.BaseURL+p, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", c.BaseURL+"/v1/me", nil)
 	if err != nil {
 		return UserInfo{}, nil, err
 	}
@@ -284,7 +283,7 @@ func (c *Client) Logout() error {
 }
 
 func (c *Client) revokePat(tok string) error {
-	req, err := http.NewRequest("POST", c.BaseURL+"/api/auth/logout", nil)
+	req, err := http.NewRequest("POST", c.BaseURL+"/v1/logout", nil)
 	if err != nil {
 		return nil
 	}

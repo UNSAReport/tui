@@ -8,7 +8,6 @@ services:
   traefik:
     image: traefik:v3.3
     container_name: tui-traefik
-    profiles: ["traefik"]
     command:
       - --providers.docker=true
       - --providers.docker.exposedByDefault=false
@@ -21,6 +20,8 @@ services:
       - "9876:80"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks: [unsareport-dev]
 
   postgres-registry:
@@ -75,6 +76,8 @@ services:
     image: ghcr.io/unsareport/registry:latest-dev
     pull_policy: always
     container_name: tui-dev-registry
+    env_file:
+      - .env.dev
     environment:
       DATABASE_URL: postgresql://registry:registrypassword@postgres-registry:5432/registry_db
       S3_ENDPOINT: http://minio:9000
@@ -102,7 +105,7 @@ services:
       - traefik.http.routers.registry.entryPoints=web
       - traefik.http.routers.registry.priority=10
       - traefik.http.routers.registry.middlewares=registry-strip
-      - traefik.http.middlewares.registry-strip.stripprefix.prefixes=/api
+      - traefik.http.middlewares.registry-strip.stripprefix.prefixes=/api/registry
       - traefik.http.middlewares.registry-strip.stripprefix.forceSlash=false
       - traefik.http.services.registry.loadbalancer.server.port=3001
     healthcheck:
@@ -116,14 +119,12 @@ services:
     image: ghcr.io/unsareport/auth:latest-dev
     pull_policy: always
     container_name: tui-dev-auth
+    env_file:
+      - .env.dev
     environment:
       DATABASE_URL: postgresql://idp:idppassword@postgres-auth:5432/idp_db
       IDP_ISSUER: http://localhost:9876/api/auth
       IDP_PORT: 3000
-      GOOGLE_CLIENT_ID: ""
-      GOOGLE_CLIENT_SECRET: ""
-      GITHUB_CLIENT_ID: ""
-      GITHUB_CLIENT_SECRET: ""
       IDP_ALLOWED_ORIGINS: http://localhost:9876
       CLIENT_REDIRECT_URL: http://localhost:9876
       ADMIN_API_KEY: admin-secret-key-12345
@@ -139,7 +140,7 @@ services:
       - traefik.http.routers.auth.entryPoints=web
       - traefik.http.routers.auth.priority=10
       - traefik.http.routers.auth.middlewares=auth-strip
-      - traefik.http.middlewares.auth-strip.stripprefix.prefixes=/api
+      - traefik.http.middlewares.auth-strip.stripprefix.prefixes=/api/auth
       - traefik.http.middlewares.auth-strip.stripprefix.forceSlash=false
       - traefik.http.services.auth.loadbalancer.server.port=3000
     healthcheck:
